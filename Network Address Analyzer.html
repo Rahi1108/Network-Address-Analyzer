@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Network Address Analyzer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f4f4f4 url('background.png') no-repeat center top;
+      background-size: cover;
+    }
+    .container {
+      max-width: 700px;
+      margin: 40px auto;
+      background: #fff;
+      padding: 30px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      border-radius: 8px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    p {
+      color: #555;
+      line-height: 1.6;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      display: inline-block;
+      padding: 12px 24px;
+      font-size: 1rem;
+      color: #fff;
+      background-color: #007BFF;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .result {
+      margin-top: 20px;
+      background: #e9ecef;
+      padding: 20px;
+      border-radius: 4px;
+    }
+    .result p {
+      margin: 8px 0;
+    }
+    .ip-list {
+      max-height: 300px;
+      overflow-y: auto;
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Network Address Analyzer</h1>
+    <p>Enter an IP address with CIDR notation (e.g., <code>192.168.1.10/26</code>):</p>
+    <input type="text" id="ipInput" placeholder="192.168.1.10/26">
+    <button id="calculateBtn">Calculate</button>
+    <div class="result" id="result"></div>
+  </div>
+
+  <script>
+    // Attach event listener to the Calculate button
+    document.getElementById('calculateBtn').addEventListener('click', calculateSubnet);
+
+    function calculateSubnet() {
+      // Clear previous results
+      const resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = "";
+
+      // Retrieve user input and split into IP address and CIDR prefix
+      const userInput = document.getElementById("ipInput").value.trim();
+      const inputParts = userInput.split('/');
+      if (inputParts.length !== 2) {
+        alert("Please enter the IP in CIDR notation (e.g., 192.168.1.10/26).");
+        return;
+      }
+
+      const ipAddress = inputParts[0].trim();
+      const cidrPrefix = parseInt(inputParts[1].trim(), 10);
+      if (isNaN(cidrPrefix) || cidrPrefix < 0 || cidrPrefix > 32) {
+        alert("CIDR must be a number between 0 and 32.");
+        return;
+      }
+
+      // Convert IP address string to a 32-bit integer (ipNumber)
+      const ipOctets = ipAddress.split('.');
+      if (ipOctets.length !== 4) {
+        alert("Invalid IP address format.");
+        return;
+      }
+      let ipNumber = 0;
+      for (let i = 0; i < 4; i++) {
+        const octetValue = parseInt(ipOctets[i], 10);
+        if (isNaN(octetValue) || octetValue < 0 || octetValue > 255) {
+          alert("Each IP octet must be a number between 0 and 255.");
+          return;
+        }
+        ipNumber = (ipNumber << 8) | octetValue;
+      }
+
+      // Calculate the subnet mask (as a 32-bit number) using the CIDR prefix
+      const subnetMaskNumber = (cidrPrefix === 0) ? 0 : (~0 << (32 - cidrPrefix)) >>> 0;
+      
+      // Calculate the network address by performing a bitwise AND between ipNumber and subnet mask
+      const networkAddressNumber = ipNumber & subnetMaskNumber;
+      
+      // Calculate the broadcast address by OR-ing the network address with the inverted subnet mask
+      const broadcastAddressNumber = networkAddressNumber | (~subnetMaskNumber >>> 0);
+
+      // Calculate total number of IP addresses in the subnet
+      const totalIPAddresses = Math.pow(2, 32 - cidrPrefix);
+
+      // Calculate usable host count: subtract network and broadcast addresses if applicable
+      const usableHostCount = (totalIPAddresses > 2) ? totalIPAddresses - 2 : totalIPAddresses;
+
+      // Calculate the first and last usable IP addresses
+      const firstUsableIPNumber = (totalIPAddresses > 2) ? networkAddressNumber + 1 : networkAddressNumber;
+      const lastUsableIPNumber = (totalIPAddresses > 2) ? broadcastAddressNumber - 1 : broadcastAddressNumber;
+
+      // Helper function: Convert a 32-bit number to dotted-decimal IP string
+      const convertNumberToIP = num => 
+        `${(num >>> 24) & 0xFF}.${(num >>> 16) & 0xFF}.${(num >>> 8) & 0xFF}.${num & 0xFF}`;
+
+      // Build the HTML to display the calculated network attributes
+      let outputHTML = `
+        <p><strong>Input:</strong> ${userInput}</p>
+        <p><strong>Subnet Mask:</strong> ${convertNumberToIP(subnetMaskNumber)}</p>
+        <p><strong>Network Address:</strong> ${convertNumberToIP(networkAddressNumber)}</p>
+        <p><strong>Broadcast Address:</strong> ${convertNumberToIP(broadcastAddressNumber)}</p>
+        <p><strong>Total IP Addresses:</strong> ${totalIPAddresses}</p>
+        <p><strong>Usable Host Count:</strong> ${usableHostCount}</p>
+        <p><strong>First Usable IP:</strong> ${convertNumberToIP(firstUsableIPNumber)}</p>
+        <p><strong>Last Usable IP:</strong> ${convertNumberToIP(lastUsableIPNumber)}</p>
+      `;
+
+      // Build a list of all usable host IP addresses
+      let ipListHTML = "";
+      if (totalIPAddresses > 1024) {
+        ipListHTML = `<p>There are ${totalIPAddresses} total addresses. Listing them all might slow down your browser. Please try a smaller subnet (e.g., /24) for a full list.</p>`;
+      } else {
+        // Loop through only the usable host addresses (exclude network and broadcast addresses)
+        for (let currentIP = firstUsableIPNumber; currentIP <= lastUsableIPNumber; currentIP++) {
+          ipListHTML += `${convertNumberToIP(currentIP)}<br>`;
+        }
+      }
+
+      outputHTML += `<p><strong>Usable Host IP Addresses:</strong></p>`;
+      outputHTML += `<div class="ip-list">${ipListHTML}</div>`;
+
+      // Display the output on the webpage
+      resultDiv.innerHTML = outputHTML;
+    }
+  </script>
+</body>
+</html>
